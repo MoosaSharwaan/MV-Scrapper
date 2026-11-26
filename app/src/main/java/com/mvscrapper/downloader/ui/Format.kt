@@ -27,9 +27,12 @@ fun formatEta(sec: Long): String = when {
     else -> "${sec / 3600} h ${(sec % 3600) / 60} min left"
 }
 
-/** Pulls the first web link out of shared text, e.g. "Watch this https://…". */
-fun extractUrl(text: String?): String? =
-    text?.let { Regex("""https?://\S+""").find(it)?.value?.trimEnd(')', ']', '>', '"', '\'', ',', '.') }
+/** Pulls the first web or magnet link out of shared text, e.g. "Watch this https://…". */
+fun extractUrl(text: String?): String? {
+    if (text == null) return null
+    Regex("""magnet:\?\S+""", RegexOption.IGNORE_CASE).find(text)?.let { return it.value.trimEnd(')', ']', '>', '"', '\'') }
+    return Regex("""https?://\S+""").find(text)?.value?.trimEnd(')', ']', '>', '"', '\'', ',', '.')
+}
 
 /** Joins non-empty parts with a middle dot. */
 fun dots(vararg parts: String) = parts.filter { it.isNotBlank() }.joinToString(" · ")

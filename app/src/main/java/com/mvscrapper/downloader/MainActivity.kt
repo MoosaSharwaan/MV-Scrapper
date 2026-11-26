@@ -61,8 +61,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            extractUrl(intent.getStringExtra(Intent.EXTRA_TEXT))?.let { sharedUrl.value = it }
+        when (intent?.action) {
+            Intent.ACTION_SEND -> extractUrl(intent.getStringExtra(Intent.EXTRA_TEXT))?.let { sharedUrl.value = it }
+            // Tapping a magnet: link in a browser or another app.
+            Intent.ACTION_VIEW -> intent.dataString?.takeIf { it.startsWith("magnet:", ignoreCase = true) }?.let { sharedUrl.value = it }
         }
     }
 }

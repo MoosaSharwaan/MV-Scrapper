@@ -74,6 +74,44 @@ object Storage {
         return resolver.insert(collection, values) ?: Uri.fromFile(target)
     }
 
+    /** Relative path for torrent files: Download/MV Downloader/<sub>. */
+    fun downloadsLabel(sub: String = "") =
+        Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER + (if (sub.isNotEmpty()) "/$sub" else "")
+
+    /** Copies a torrent file into Download/MV Downloader/[sub] (rule R15). Any file type. */
+    fun saveDownload(context: Context, file: File, sub: String): Uri {
+        val resolver = context.contentResolver
+        val ext = file.name.substringAfterLast('.', "").lowercase()
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, downloadsLabel(sub))
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("Couldn't create the file in ${downloadsLabel(sub)}")
+            try {
+                resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+                    ?: error("Couldn't write the file")
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            } catch (t: Throwable) {
+                resolver.delete(uri, null, null)
+                throw t
+            }
+            return uri
+        }
+        @Suppress("DEPRECATION")
+        val base = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = File(File(base, FOLDER), sub).apply { mkdirs() }
+        var target = File(dir, file.name)
+        var n = 1
+        while (target.exists()) target = File(dir, "${file.nameWithoutExtension} ($n).${file.extension}").also { n++ }
+        file.copyTo(target)
+        return Uri.fromFile(target)
+    }
+
     /** Deletes a saved file. Returns false if Android refused (e.g. the app was reinstalled). */
     fun delete(context: Context, uri: Uri): Boolean = try {
         if (uri.scheme == "file") {

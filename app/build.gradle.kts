@@ -79,6 +79,13 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:$ytdl")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$ytdl")
 
+    // Magnet links. MIT licensed. One native library per CPU type, matching the APK splits.
+    val lt = "2.1.0-39"
+    implementation("org.libtorrent4j:libtorrent4j:$lt")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:$lt")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:$lt")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:$lt")
+
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")

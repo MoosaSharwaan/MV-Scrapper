@@ -54,7 +54,7 @@ import com.mvscrapper.downloader.State
 import com.mvscrapper.downloader.Storage
 import kotlinx.coroutines.launch
 
-private enum class Filter(val label: String) { All("All"), Video("Video"), Audio("Audio") }
+private enum class Filter(val label: String) { All("All"), Video("Video"), Audio("Audio"), Files("Torrents") }
 
 /**
  * Finished downloads as a list, newest first. Items stay until you delete them (rule R11).
@@ -78,8 +78,9 @@ fun LibraryScreen() {
         (query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)) &&
             when (filter) {
                 Filter.All -> true
-                Filter.Video -> !it.spec.isAudio
+                Filter.Video -> !it.spec.isAudio && !it.isTorrent
                 Filter.Audio -> it.spec.isAudio
+                Filter.Files -> it.isTorrent
             }
     }
 
@@ -133,7 +134,7 @@ fun LibraryScreen() {
                         CheckMark(isSelected)
                         Spacer(Modifier.width(12.dp))
                     }
-                    Thumb(item.thumbnail, Modifier.width(88.dp), label = if (item.spec.isAudio) "audio" else "")
+                    Thumb(item.thumbnail, Modifier.width(88.dp), label = when { item.isTorrent -> "torrent"; item.spec.isAudio -> "audio"; else -> "" })
                     Spacer(Modifier.width(12.dp))
                     RowText(
                         item.title,

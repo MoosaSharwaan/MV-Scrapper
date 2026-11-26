@@ -67,10 +67,21 @@ data class PlaylistMeta(
     val entries: List<PlaylistEntry>,
 )
 
-/** A link is either a single video or a playlist / channel. */
+data class TorrentFile(val index: Int, val path: String, val sizeBytes: Long)
+
+/** What a magnet link contains. [metadata] is the .torrent data, kept so peers aren't asked twice. */
+class TorrentMeta(
+    val url: String,
+    val name: String,
+    val files: List<TorrentFile>,
+    val metadata: ByteArray,
+)
+
+/** A link is a single video, a playlist / channel, or a magnet link. */
 sealed interface Fetched {
     data class Video(val meta: VideoMeta) : Fetched
     data class Playlist(val meta: PlaylistMeta) : Fetched
+    class Torrent(val meta: TorrentMeta) : Fetched
 }
 
 enum class State { Waiting, Running, Processing, Done, Failed, Canceled }
@@ -93,6 +104,11 @@ data class Item(
     val createdAt: Long = System.currentTimeMillis(),
     /** Sub-folder inside MV Downloader, e.g. the playlist name (rule R9). Empty for single videos. */
     val folder: String = "",
+    /** For magnet links: the indexes of the files you chose. */
+    val torrentFiles: List<Int> = emptyList(),
+    /** Every saved file, for torrents with more than one. [fileUri] is the first. */
+    val fileUris: List<String> = emptyList(),
 ) {
     val isActive: Boolean get() = state == State.Running || state == State.Processing
+    val isTorrent: Boolean get() = url.startsWith("magnet:", ignoreCase = true)
 }

@@ -48,6 +48,9 @@ import com.mvscrapper.downloader.PlaylistEntry
 import com.mvscrapper.downloader.PlaylistMeta
 import com.mvscrapper.downloader.Spec
 import com.mvscrapper.downloader.State
+import com.mvscrapper.downloader.TorrentFile
+import com.mvscrapper.downloader.TorrentMeta
+import com.mvscrapper.downloader.Torrents
 import com.mvscrapper.downloader.VideoMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,13 +70,15 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
 
     fun fetch(single: Boolean = false) {
         val link = extractUrl(url.trim()) ?: url.trim()
-        if (link.isEmpty() || engine != Engine.Status.Ready) return
+        if (link.isEmpty() || (engine != Engine.Status.Ready && !Torrents.isMagnet(link))) return
         loading = true
         error = null
         meta = null
         scope.launch {
             try {
-                meta = withContext(Dispatchers.IO) { Engine.fetch(link, single) }
+                meta = withContext(Dispatchers.IO) {
+                    if (Torrents.isMagnet(link)) Fetched.Torrent(Torrents.fetch(context, link)) else Engine.fetch(link, single)
+                }
             } catch (t: Throwable) {
                 error = Engine.cleanError(t)
             } finally {
@@ -124,6 +129,20 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
             )
             return
         }
+        is Fetched.Torrent -> {
+            TorrentContent(
+                torrent = found.meta,
+                onBack = { meta = null },
+                onDownload = { files ->
+                    Downloads.enqueueTorrent(found.meta, files)
+                    Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
+                    meta = null
+                    url = ""
+                    onAdded()
+                },
+            )
+            return
+        }
         null -> {}
     }
 
@@ -137,7 +156,7 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
             value = url,
             onValueChange = { url = it; error = null },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("https://…") },
+            placeholder = { Text("https://… or magnet:…") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { fetch() }),
@@ -147,15 +166,15 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
         )
         Button(
             onClick = { fetch() },
-            enabled = !loading && url.isNotBlank() && engine == Engine.Status.Ready,
+            enabled = !loading && url.isNotBlank() && (engine == Engine.Status.Ready || Torrents.isMagnet(url)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (loading) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
-                Text("Fetching video info…")
+                Text(if (Torrents.isMagnet(url)) "Asking peers for the file list…" else "Fetching video info…")
             } else {
-                Text("Fetch video info", modifier = Modifier.padding(vertical = 4.dp))
+                Text(if (Torrents.isMagnet(url)) "Read magnet link" else "Fetch video info", modifier = Modifier.padding(vertical = 4.dp))
             }
         }
         when (engine) {
@@ -293,6 +312,64 @@ private fun PlaylistContent(
                 enabled = chosen.isNotEmpty(),
                 modifier = Modifier.weight(1f),
             ) { Text("Download ${chosen.size}") }
+        }
+    }
+}
+
+/** The files inside a magnet link. All ticked; untick the ones you don't want. */
+@Composable
+private fun TorrentContent(torrent: TorrentMeta, onBack: () -> Unit, onDownload: (List<TorrentFile>) -> Unit) {
+    var chosen by remember(torrent) { mutableStateOf(torrent.files.map { it.index }.toSet()) }
+    val all = chosen.size == torrent.files.size
+    val total = torrent.files.filter { it.index in chosen }.sumOf { it.sizeBytes }
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onBack, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("‹ Back") }
+                    Eyebrow("Magnet link · torrent", color = Amber)
+                    Text(torrent.name, color = Ink, fontSize = 20.sp, lineHeight = 26.sp)
+                    Text(
+                        dots("${torrent.files.size} files", formatSize(torrent.files.sumOf { it.sizeBytes })),
+                        color = Mute, fontSize = 13.sp,
+                    )
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Eyebrow("Files · ${chosen.size} selected", modifier = Modifier.weight(1f))
+                        TextButton(onClick = { chosen = if (all) emptySet() else torrent.files.map { it.index }.toSet() }) {
+                            Text(if (all) "Select none" else "Select all")
+                        }
+                    }
+                }
+            }
+            items(torrent.files) { f ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable { chosen = if (f.index in chosen) chosen - f.index else chosen + f.index }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CheckMark(f.index in chosen)
+                    Spacer(Modifier.width(12.dp))
+                    Text(f.path, Modifier.weight(1f), color = Ink, fontSize = 14.sp, lineHeight = 19.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(formatSize(f.sizeBytes), color = Mute, fontSize = 12.sp)
+                }
+            }
+            item {
+                Text(
+                    "Saves to Download/MV Downloader. Sharing stops as soon as the download finishes.",
+                    color = Mute, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onBack) { Text("Cancel") }
+            Button(
+                onClick = { onDownload(torrent.files.filter { it.index in chosen }) },
+                enabled = chosen.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) { Text(dots("Download ${chosen.size}", formatSize(total))) }
         }
     }
 }

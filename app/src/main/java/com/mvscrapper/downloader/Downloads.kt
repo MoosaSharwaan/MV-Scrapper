@@ -75,6 +75,27 @@ object Downloads {
         pump()
     }
 
+    /** Queues the chosen files of a magnet link as one entry (rule R14: same queue and limits). */
+    fun enqueueTorrent(meta: TorrentMeta, chosen: List<TorrentFile>) {
+        val id = UUID.randomUUID().toString()
+        Torrents.saveMetadata(app, id, meta.metadata)
+        val size = chosen.sumOf { it.sizeBytes }
+        val item = Item(
+            id = id,
+            url = meta.url,
+            title = meta.name,
+            thumbnail = null,
+            durationSec = 0,
+            spec = Spec(label = "Torrent · ${chosen.size} file${if (chosen.size == 1) "" else "s"}", format = "", sizeBytes = size),
+            sizeBytes = size,
+            folder = Storage.folderName(meta.name),
+            torrentFiles = chosen.map { it.index },
+        )
+        synchronized(lock) { _items.value = _items.value + item }
+        persist()
+        pump()
+    }
+
     fun cancel(id: String) {
         update(id) { if (it.state == State.Done) it else it.copy(state = State.Canceled, message = "Canceled") }
         scope.launch { Engine.cancel(id) }
@@ -98,10 +119,13 @@ object Downloads {
                 update(item.id, persist = false) { it.copy(state = State.Canceled) }
                 Engine.cancel(item.id)
             }
-            if (deleteFiles && item.fileUri != null) {
-                if (!Storage.delete(app, Uri.parse(item.fileUri))) refused++
+            if (deleteFiles) {
+                (item.fileUris + listOfNotNull(item.fileUri)).distinct().forEach { u ->
+                    if (!Storage.delete(app, Uri.parse(u))) refused++
+                }
             }
             workDir(item.id).deleteRecursively()
+            if (item.isTorrent) Torrents.deleteMetadata(app, item.id)
         }
         synchronized(lock) { _items.value = _items.value.filterNot { it.id in ids } }
         persist()
@@ -139,10 +163,46 @@ object Downloads {
         if (_items.value.any { it.isActive }) startService()
     }
 
+    private fun runTorrent(item: Item, dir: File) {
+        val id = item.id
+        val files = Torrents.download(
+            app, item, dir,
+            onProgress = { p, eta, info ->
+                update(id, persist = false) {
+                    if (it.state == State.Canceled) it else it.copy(progress = p, etaSec = eta, message = info)
+                }
+            },
+            isCanceled = { get(id)?.state.let { it == null || it == State.Canceled } },
+        )
+        if (get(id)?.state != State.Running) return
+        if (files.isEmpty()) error("The torrent finished but none of the chosen files were found")
+        update(id) { it.copy(state = State.Processing, message = "Saving") }
+        val uris = files.map { f ->
+            // Keep the torrent's own sub-folders under Download/MV Downloader/<name>.
+            val rel = f.parentFile?.relativeTo(dir)?.path.orEmpty()
+            val sub = listOf(item.folder, rel).filter { it.isNotEmpty() && it != "." }.joinToString("/")
+            Storage.saveDownload(app, f, sub).toString()
+        }
+        update(id) {
+            it.copy(
+                state = State.Done, progress = 1f, etaSec = 0,
+                fileUri = uris.first(), fileUris = uris, fileName = files.first().name,
+                sizeBytes = files.sumOf { f -> f.length() },
+                message = "Saved ${files.size} file${if (files.size == 1) "" else "s"} to ${Storage.downloadsLabel(item.folder)}",
+            )
+        }
+        dir.deleteRecursively()
+        Torrents.deleteMetadata(app, id)
+    }
+
     private fun run(id: String) {
         val item = get(id) ?: return
         val dir = workDir(id).apply { mkdirs() }
         try {
+            if (item.isTorrent) {
+                runTorrent(item, dir)
+                return
+            }
             Engine.download(item, dir) { p, eta, line ->
                 val processing = POST_STEPS.any { line.startsWith(it) }
                 update(id, persist = false) {

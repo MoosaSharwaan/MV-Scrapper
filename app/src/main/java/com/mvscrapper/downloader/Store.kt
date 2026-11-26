@@ -34,6 +34,7 @@ object Store {
         put("state", it.state.name); put("message", it.message)
         put("fileUri", it.fileUri ?: ""); put("fileName", it.fileName ?: "")
         put("size", it.sizeBytes); put("created", it.createdAt); put("folder", it.folder)
+        put("torrentFiles", JSONArray(it.torrentFiles)); put("fileUris", JSONArray(it.fileUris))
         put("spec", JSONObject().apply {
             put("label", it.spec.label); put("format", it.spec.format); put("sort", it.spec.sort)
             put("audio", it.spec.audio); put("container", it.spec.container); put("size", it.spec.sizeBytes)
@@ -59,6 +60,8 @@ object Store {
             sizeBytes = o.optLong("size"),
             createdAt = o.optLong("created", System.currentTimeMillis()),
             folder = o.optString("folder"),
+            torrentFiles = o.optJSONArray("torrentFiles")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty(),
+            fileUris = o.optJSONArray("fileUris")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
         )
     }
 }
