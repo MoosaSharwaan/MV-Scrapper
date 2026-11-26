@@ -88,18 +88,11 @@ Never commit `release.jks` to the repository.
 
 ### Publish a release
 
-Tag a commit on the default branch and push the tag:
+In GitHub, open **Actions → Release → Run workflow**, enter a version such as `0.1.0`, and run it.
+The workflow creates the tag `v0.1.0` itself. Pushing a `v*` tag from your computer works too.
 
-```bash
-git tag v0.1.0
-```
-
-```bash
-git push origin v0.1.0
-```
-
-The **Release** workflow builds signed APKs (`mv-downloader-v0.1.0-arm64-v8a.apk`, `-armeabi-v7a`, `-x86_64`,
-`-universal`) and attaches them to a GitHub release. Each release's version code is the workflow run number,
+It builds signed APKs (`mv-downloader-v0.1.0-arm64-v8a.apk`, `-armeabi-v7a`, `-x86_64`, `-universal`)
+and attaches them to a GitHub release. Each release's version code is the workflow run number,
 so it always goes up.
 
 ## Code map

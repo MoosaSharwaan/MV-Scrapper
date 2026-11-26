@@ -1,9 +1,15 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish a signed release that Obtainium can install and update.
+# Publishes a signed release that Obtainium can install and update. Start it either by
+# pushing a tag like v0.1.0, or from the Actions tab: Release -> Run workflow -> enter 0.1.0.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number, e.g. 0.1.0 (the tag v0.1.0 is created for you)"
+        required: true
 
 permissions:
   contents: write
@@ -20,6 +26,14 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Work out the tag
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT" ]; then tag="v${INPUT#v}"; else tag="$GITHUB_REF_NAME"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "Releasing $tag"
 
       - name: Check signing secrets
         env:
@@ -42,10 +56,9 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-          VERSION_NAME: ${{ github.ref_name }}
           VERSION_CODE: ${{ github.run_number }}
         run: |
-          export VERSION_NAME="${VERSION_NAME#v}"
+          export VERSION_NAME="${TAG#v}"
           ./gradlew assembleRelease --stacktrace
 
       - name: Name the APKs
@@ -53,11 +66,13 @@ jobs:
           mkdir out
           for f in app/build/outputs/apk/release/app-*-release.apk; do
             abi=$(basename "$f" | sed -E 's/^app-(.*)-release\.apk$/\1/')
-            cp "$f" "out/mv-downloader-${GITHUB_REF_NAME}-${abi}.apk"
+            cp "$f" "out/mv-downloader-${TAG}-${abi}.apk"
           done
           ls -l out
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: out/*.apk
           generate_release_notes: true
