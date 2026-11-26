@@ -54,6 +54,20 @@ object Torrents {
         }
     }
 
+    /** Reads a .torrent file. No peers needed: the file list is inside it. */
+    fun fromTorrentFile(bytes: ByteArray): TorrentMeta {
+        val ti = try {
+            TorrentInfo(bytes)
+        } catch (e: Exception) {
+            throw IllegalStateException("ERROR: That isn't a valid .torrent file.")
+        }
+        val fs = ti.files()
+        val files = (0 until fs.numFiles()).map { TorrentFile(it, fs.filePath(it), fs.fileSize(it)) }
+        // Queue entries are recognised as torrents by a magnet: link, so build one from the hash.
+        val magnet = "magnet:?xt=urn:btih:${ti.infoHash().toHex()}&dn=${java.net.URLEncoder.encode(ti.name(), "UTF-8")}"
+        return TorrentMeta(url = magnet, name = ti.name(), files = files, metadata = bytes)
+    }
+
     /** Keeps the file list so a queued or retried download doesn't have to ask peers again. */
     fun saveMetadata(context: Context, id: String, bytes: ByteArray) {
         metaFile(context, id).apply { parentFile?.mkdirs() }.writeBytes(bytes)

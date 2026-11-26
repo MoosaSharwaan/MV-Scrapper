@@ -40,7 +40,20 @@ object Prefs {
     val embedChapters = Flag("embed_chapters", true)
     val embedSubtitles = Flag("embed_subtitles", false)
     val skipDownloaded = Flag("skip_downloaded", false)
-    private val flags = listOf(embedMetadata, embedThumbnail, embedChapters, embedSubtitles, skipDownloaded)
+    // v3
+    val sponsorBlock = Flag("sponsorblock", false)
+    val nightly = Flag("ytdlp_nightly", false)
+    private val flags = listOf(embedMetadata, embedThumbnail, embedChapters, embedSubtitles, skipDownloaded, sponsorBlock, nightly)
+
+    /** Speed limit per download in MB/s. 0 = no limit. Applies to yt-dlp downloads. */
+    val SPEED_LIMITS = listOf(0, 1, 2, 5, 10)
+    private val _speedLimit = MutableStateFlow(0)
+    val speedLimit: StateFlow<Int> = _speedLimit
+
+    fun setSpeedLimit(n: Int) {
+        _speedLimit.value = n
+        sp.edit().putInt("speed_limit", n).apply()
+    }
 
     /** How many videos to list from a playlist or channel: the first N (for channels, the newest). 0 = all. */
     val PLAYLIST_LIMITS = listOf(0, 10, 25, 50, 100, 200)
@@ -56,6 +69,7 @@ object Prefs {
         sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         flags.forEach { it.load() }
         _playlistLimit.value = sp.getInt("playlist_limit", 0)
+        _speedLimit.value = sp.getInt("speed_limit", 0)
         _parallel.value = sp.getInt("parallel", 2).coerceIn(MIN_PARALLEL, MAX_PARALLEL)
         _wifiOnly.value = sp.getBoolean("wifi_only", true)
         _autoUpdate.value = sp.getBoolean("auto_update", true)

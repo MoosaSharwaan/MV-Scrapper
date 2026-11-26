@@ -1,6 +1,8 @@
 package com.mvscrapper.downloader.ui
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -87,10 +89,36 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
         }
     }
 
+    /** Reads a .torrent file picked here or opened from another app. */
+    fun openTorrent(uri: android.net.Uri) {
+        loading = true
+        error = null
+        meta = null
+        scope.launch {
+            try {
+                meta = withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalStateException("ERROR: Couldn't read that file.")
+                    Fetched.Torrent(Torrents.fromTorrentFile(bytes))
+                }
+            } catch (t: Throwable) {
+                error = Engine.cleanError(t)
+            } finally {
+                loading = false
+            }
+        }
+    }
+    val pickTorrent = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { openTorrent(it) }
+    }
+
     // A link shared from another app is fetched as soon as the engine is ready.
     LaunchedEffect(sharedUrl.value, engine) {
         val shared = sharedUrl.value
-        if (shared != null && engine == Engine.Status.Ready) {
+        if (shared != null && (shared.startsWith("content:") || shared.startsWith("file:"))) {
+            sharedUrl.value = null
+            openTorrent(android.net.Uri.parse(shared))
+        } else if (shared != null && engine == Engine.Status.Ready) {
             url = shared
             sharedUrl.value = null
             fetch()
@@ -183,6 +211,11 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
             Engine.Status.Ready -> {}
         }
         error?.let { Text(it, color = Danger, fontSize = 14.sp, lineHeight = 20.sp) }
+        OutlinedButton(
+            onClick = { pickTorrent.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) },
+            enabled = !loading,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Open a .torrent file") }
 
         Recent()
     }

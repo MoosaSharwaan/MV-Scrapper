@@ -24,10 +24,40 @@ object Engine {
     /** yt-dlp's download archive: links listed here are skipped (Settings → Skip videos already downloaded). */
     private var archiveFile: File? = null
 
+    /** Cookies imported in Settings, for sign-in and age-gated videos. */
+    private var cookiesFile: File? = null
+    private val _hasCookies = MutableStateFlow(false)
+    val hasCookies: StateFlow<Boolean> = _hasCookies
+
+    /**
+     * Copies a Netscape-format cookies.txt (exported with a browser extension such as
+     * "Get cookies.txt LOCALLY") into the app. Returns an error message, or null when it worked.
+     */
+    fun importCookies(context: Context, uri: android.net.Uri): String? {
+        val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+            ?: return "Couldn't read that file."
+        val looksRight = text.lineSequence().any { it.startsWith("# Netscape HTTP Cookie File") || it.split('\t').size >= 7 }
+        if (!looksRight) return "That isn't a cookies.txt file. Export cookies in the Netscape format."
+        val f = cookiesFile ?: return "The engine isn't ready yet."
+        f.writeText(text)
+        _hasCookies.value = true
+        return null
+    }
+
+    fun removeCookies() {
+        cookiesFile?.delete()
+        _hasCookies.value = false
+    }
+
+    private fun addCookies(request: YoutubeDLRequest) {
+        cookiesFile?.takeIf { it.exists() }?.let { request.addOption("--cookies", it.absolutePath) }
+    }
+
     /** Unpacks Python and ffmpeg on first run, which takes a few seconds. Call off the main thread. */
     fun init(context: Context) {
         try {
             archiveFile = File(context.filesDir, "download-archive.txt")
+            cookiesFile = File(context.filesDir, "cookies.txt").also { _hasCookies.value = it.exists() }
             YoutubeDL.getInstance().init(context)
             FFmpeg.getInstance().init(context)
             _version.value = YoutubeDL.getInstance().version(context)
@@ -49,6 +79,7 @@ object Engine {
             .addOption("--flat-playlist")
         if (single) request.addOption("--no-playlist")
         Prefs.playlistLimit.value.takeIf { it > 0 }?.let { request.addOption("--playlist-end", it) }
+        addCookies(request)
         val response = YoutubeDL.getInstance().execute(request, processId = null, redirectErrorStream = false, callback = null)
         val json = try {
             JSONObject(response.out)
@@ -84,6 +115,10 @@ object Engine {
         if (Prefs.embedMetadata.on) request.addOption("--embed-metadata")
         if (Prefs.embedThumbnail.on) request.addOption("--embed-thumbnail")
         if (Prefs.skipDownloaded.on) archiveFile?.let { request.addOption("--download-archive", it.absolutePath) }
+        Prefs.speedLimit.value.takeIf { it > 0 }?.let { request.addOption("-r", "${it}M") }
+        // SponsorBlock only knows YouTube videos; yt-dlp skips it for other sites.
+        if (Prefs.sponsorBlock.on) request.addOption("--sponsorblock-remove", "sponsor,selfpromo,interaction")
+        addCookies(request)
         YoutubeDL.getInstance().execute(
             request,
             processId = item.id,
@@ -99,7 +134,10 @@ object Engine {
     /** Updates yt-dlp to the latest stable release. Blocking. Returns a message for the user. */
     fun update(context: Context): String {
         return try {
-            val result = YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE)
+            val result = YoutubeDL.getInstance().updateYoutubeDL(
+                context,
+                if (Prefs.nightly.on) YoutubeDL.UpdateChannel.NIGHTLY else YoutubeDL.UpdateChannel.STABLE,
+            )
             _version.value = YoutubeDL.getInstance().version(context)
             when (result) {
                 YoutubeDL.UpdateStatus.DONE -> "Updated to ${_version.value}"
@@ -178,7 +216,7 @@ object Engine {
             trimmed.contains("DRM", ignoreCase = true) ->
                 "This video is DRM-protected and can't be downloaded."
             trimmed.contains("Sign in", ignoreCase = true) || trimmed.contains("login", ignoreCase = true) ->
-                "This video needs a sign-in. Cookie import comes in a later version."
+                "This video needs a sign-in. Import your browser cookies in Settings, then try again."
             else -> trimmed.take(300)
         }
     }

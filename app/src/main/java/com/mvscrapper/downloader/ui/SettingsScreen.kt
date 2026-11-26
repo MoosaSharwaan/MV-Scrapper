@@ -1,5 +1,8 @@
 package com.mvscrapper.downloader.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +45,16 @@ fun SettingsScreen() {
     val wifiOnly by Prefs.wifiOnly.collectAsStateWithLifecycle()
     val autoUpdate by Prefs.autoUpdate.collectAsStateWithLifecycle()
     val playlistLimit by Prefs.playlistLimit.collectAsStateWithLifecycle()
+    val speedLimit by Prefs.speedLimit.collectAsStateWithLifecycle()
+    val hasCookies by Engine.hasCookies.collectAsStateWithLifecycle()
+    val pickCookies = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val problem = withContext(Dispatchers.IO) { Engine.importCookies(context, uri) }
+                Toast.makeText(context, problem ?: "Cookies imported", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     val version by Engine.version.collectAsStateWithLifecycle()
     val engine by Engine.status.collectAsStateWithLifecycle()
     val items by Downloads.items.collectAsStateWithLifecycle()
@@ -65,6 +78,7 @@ fun SettingsScreen() {
         Setting("Wi-Fi only", "Downloads wait until you're on Wi-Fi.") {
             Switch(checked = wifiOnly, onCheckedChange = { Prefs.setWifiOnly(it) })
         }
+        FlagSetting(Prefs.nightly, "Use nightly yt-dlp builds", "Newest site fixes, a day or two before stable. Can be less reliable.")
         Setting("Update yt-dlp on launch", "Only on Wi-Fi. Sites change often; updating is usually the fix.") {
             Switch(checked = autoUpdate, onCheckedChange = { Prefs.setAutoUpdate(it) })
         }
@@ -98,6 +112,27 @@ fun SettingsScreen() {
             Prefs.skipDownloaded, "Skip videos already downloaded",
             "Remembers what you've downloaded and skips it next time, even after you delete the file.",
         )
+        FlagSetting(
+            Prefs.sponsorBlock, "Cut sponsor segments",
+            "YouTube only. Removes sponsor, self-promotion and subscribe reminders, using SponsorBlock.",
+        )
+        Setting("Speed limit", "Per download. Torrents aren't limited.") {
+            OutlinedButton(onClick = {
+                val all = Prefs.SPEED_LIMITS
+                Prefs.setSpeedLimit(all[(all.indexOf(speedLimit) + 1) % all.size])
+            }) { Text(if (speedLimit == 0) "None" else "$speedLimit MB/s") }
+        }
+        Setting(
+            "Cookies",
+            if (hasCookies) "Imported. Used for sign-in and age-gated videos."
+            else "For videos that need a sign-in. Export cookies.txt from your browser, then import it here.",
+        ) {
+            if (hasCookies) {
+                OutlinedButton(onClick = { Engine.removeCookies() }) { Text("Remove") }
+            } else {
+                OutlinedButton(onClick = { pickCookies.launch(arrayOf("text/plain", "*/*")) }) { Text("Import") }
+            }
+        }
         Setting("Playlist limit", "How many videos to list from a playlist or channel. For channels, the newest.") {
             OutlinedButton(onClick = {
                 val all = Prefs.PLAYLIST_LIMITS
