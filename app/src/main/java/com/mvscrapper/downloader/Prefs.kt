@@ -45,6 +45,18 @@ object Prefs {
     val nightly = Flag("ytdlp_nightly", false)
     private val flags = listOf(embedMetadata, embedThumbnail, embedChapters, embedSubtitles, skipDownloaded, sponsorBlock, nightly)
 
+    /** A folder you chose in Settings (a document-tree URI), or null for the default folders. */
+    private val _saveFolder = MutableStateFlow<String?>(null)
+    val saveFolder: StateFlow<String?> = _saveFolder
+    private val _saveFolderName = MutableStateFlow<String?>(null)
+    val saveFolderName: StateFlow<String?> = _saveFolderName
+
+    fun setSaveFolder(uri: String?, name: String?) {
+        _saveFolder.value = uri
+        _saveFolderName.value = name
+        sp.edit().putString("save_folder", uri).putString("save_folder_name", name).apply()
+    }
+
     /** File name styles (rule R9 default first). Values are yt-dlp output templates. */
     val NAME_TEMPLATES = listOf(
         "Title" to "%(title).120B.%(ext)s",
@@ -85,6 +97,8 @@ object Prefs {
         flags.forEach { it.load() }
         _playlistLimit.value = sp.getInt("playlist_limit", 0)
         _speedLimit.value = sp.getInt("speed_limit", 0)
+        _saveFolder.value = sp.getString("save_folder", null)
+        _saveFolderName.value = sp.getString("save_folder_name", null)
         _nameTemplate.value = sp.getInt("name_template", 0).coerceIn(0, NAME_TEMPLATES.lastIndex)
         _parallel.value = sp.getInt("parallel", 2).coerceIn(MIN_PARALLEL, MAX_PARALLEL)
         _wifiOnly.value = sp.getBoolean("wifi_only", true)

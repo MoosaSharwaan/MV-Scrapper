@@ -1,6 +1,9 @@
 package com.mvscrapper.downloader.ui
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.compose.material3.TextButton
+import androidx.documentfile.provider.DocumentFile
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +51,22 @@ fun SettingsScreen() {
     val playlistLimit by Prefs.playlistLimit.collectAsStateWithLifecycle()
     val speedLimit by Prefs.speedLimit.collectAsStateWithLifecycle()
     val nameTemplate by Prefs.nameTemplate.collectAsStateWithLifecycle()
+    val saveFolder by Prefs.saveFolder.collectAsStateWithLifecycle()
+    val saveFolderName by Prefs.saveFolderName.collectAsStateWithLifecycle()
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                // Keep access after the phone restarts.
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+                val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Chosen folder"
+                Prefs.setSaveFolder(uri.toString(), name)
+                Toast.makeText(context, "New downloads save to $name", Toast.LENGTH_SHORT).show()
+            } catch (_: SecurityException) {
+                Toast.makeText(context, "Android didn't allow that folder. Pick another one.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     val subs by Subscriptions.list.collectAsStateWithLifecycle()
     val checking by Subscriptions.checking.collectAsStateWithLifecycle()
     val hasCookies by Engine.hasCookies.collectAsStateWithLifecycle()
@@ -104,8 +123,26 @@ fun SettingsScreen() {
         }
         Setting(
             "Save location",
-            "Video: ${Storage.folderLabel(false)}\nAudio: ${Storage.folderLabel(true)}\nTorrents: ${Storage.downloadsLabel()}",
-        ) {}
+            if (saveFolder != null) "Everything saves to ${saveFolderName ?: "the chosen folder"}, with playlist and torrent sub-folders."
+            else "Video: ${Storage.folderLabel(false)}\nAudio: ${Storage.folderLabel(true)}\nTorrents: ${Storage.downloadsLabel()}",
+        ) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(if (saveFolder != null) "Change" else "Choose folder") }
+                if (saveFolder != null) {
+                    TextButton(onClick = {
+                        saveFolder?.let { u ->
+                            runCatching {
+                                context.contentResolver.releasePersistableUriPermission(
+                                    android.net.Uri.parse(u),
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                                )
+                            }
+                        }
+                        Prefs.setSaveFolder(null, null)
+                    }) { Text("Use default") }
+                }
+            }
+        }
 
         Eyebrow("Download options", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         FlagSetting(Prefs.embedMetadata, "Embed title and details", "Title, uploader and date are saved inside the file.")
