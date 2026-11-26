@@ -18,17 +18,16 @@ android {
         versionName = System.getenv("VERSION_NAME") ?: "0.1.0-dev"
     }
 
-    // The same key must sign every release, or phones refuse to install the update.
-    // The key lives in GitHub secrets; see README, "Releases and Obtainium".
-    val keystoreFile = System.getenv("SIGNING_KEYSTORE")?.let { file(it) }
+    // One key for every build, here and on GitHub, so each release installs over the last
+    // (and Obtainium can update it). Same approach as Exo Player: the key is committed and its
+    // password is public, which is fine for an app you install yourself, but it means anyone
+    // could sign a look-alike APK. Only install builds from this repo's releases.
     signingConfigs {
-        if (keystoreFile != null && keystoreFile.exists()) {
-            create("release") {
-                storeFile = keystoreFile
-                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
-                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
-                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
-            }
+        create("shared") {
+            storeFile = file("signing.keystore")
+            storePassword = "android"
+            keyAlias = "mvdownloader"
+            keyPassword = "android"
         }
     }
 
@@ -47,7 +46,10 @@ android {
             // Off for now: the library maps yt-dlp's JSON with Jackson, which needs
             // keep rules before code shrinking is safe.
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("release")
+            signingConfig = signingConfigs.getByName("shared")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 

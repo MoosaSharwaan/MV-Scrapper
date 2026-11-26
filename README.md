@@ -60,31 +60,11 @@ and keep it updated.
 
 Obtainium then checks for new releases and offers the update.
 
-### One-time setup: the signing key
+### Signing
 
-Every release must be signed with the same key, or Android refuses the update. Create the key once on your
-own computer and keep a backup: if it is lost, everyone has to uninstall and reinstall.
-
-```bash
-keytool -genkeypair -v -keystore release.jks -alias mvdownloader -keyalg RSA -keysize 4096 -validity 10000
-```
-
-```bash
-base64 -w 0 release.jks > release.jks.b64
-```
-
-On macOS use `base64 -i release.jks -o release.jks.b64` for the second command.
-
-Then add four secrets in GitHub: repository **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Secret | Value |
-| --- | --- |
-| `SIGNING_KEYSTORE_BASE64` | the contents of `release.jks.b64` |
-| `SIGNING_STORE_PASSWORD` | the keystore password you chose |
-| `SIGNING_KEY_ALIAS` | `mvdownloader` |
-| `SIGNING_KEY_PASSWORD` | the key password (the same as the keystore password if you didn't set one) |
-
-Never commit `release.jks` to the repository.
+Every build is signed with `app/signing.keystore`, which is committed to the repository (password `android`),
+the same approach as Exo Player. No secrets to set up, and every release installs over the last one.
+Because the key is public, anyone could sign a look-alike APK: only install builds from this repository's releases.
 
 ### Publish a release
 

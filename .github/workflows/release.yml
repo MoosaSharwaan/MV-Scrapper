@@ -35,27 +35,8 @@ jobs:
           echo "TAG=$tag" >> "$GITHUB_ENV"
           echo "Releasing $tag"
 
-      - name: Check signing secrets
-        env:
-          KS: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-          SP: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          KA: ${{ secrets.SIGNING_KEY_ALIAS }}
-          KP: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: |
-          if [ -z "$KS" ] || [ -z "$SP" ] || [ -z "$KA" ] || [ -z "$KP" ]; then
-            echo "::error::Signing secrets are missing. See README, 'Releases and Obtainium'."
-            exit 1
-          fi
-
-      - name: Decode keystore
-        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
-
       - name: Build signed release APKs
         env:
-          SIGNING_KEYSTORE: ${{ runner.temp }}/release.jks
-          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           VERSION_CODE: ${{ github.run_number }}
         run: |
           export VERSION_NAME="${TAG#v}"
