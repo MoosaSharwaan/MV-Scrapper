@@ -33,7 +33,7 @@ object Store {
         put("thumbnail", it.thumbnail ?: ""); put("duration", it.durationSec)
         put("state", it.state.name); put("message", it.message)
         put("fileUri", it.fileUri ?: ""); put("fileName", it.fileName ?: "")
-        put("size", it.sizeBytes); put("created", it.createdAt)
+        put("size", it.sizeBytes); put("created", it.createdAt); put("folder", it.folder)
         put("spec", JSONObject().apply {
             put("label", it.spec.label); put("format", it.spec.format); put("sort", it.spec.sort)
             put("audio", it.spec.audio); put("container", it.spec.container); put("size", it.spec.sizeBytes)
@@ -58,6 +58,7 @@ object Store {
             fileName = o.optString("fileName").ifEmpty { null },
             sizeBytes = o.optLong("size"),
             createdAt = o.optLong("created", System.currentTimeMillis()),
+            folder = o.optString("folder"),
         )
     }
 }

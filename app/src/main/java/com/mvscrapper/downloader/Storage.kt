@@ -22,11 +22,16 @@ object Storage {
             ?: if (audio) "audio/*" else "video/*"
     }
 
-    fun folderLabel(audio: Boolean) =
-        (if (audio) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES) + "/" + FOLDER
+    fun folderLabel(audio: Boolean, sub: String = "") =
+        (if (audio) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES) + "/" + FOLDER +
+            (if (sub.isNotEmpty()) "/$sub" else "")
+
+    /** Turns a playlist title into a safe folder name. */
+    fun folderName(title: String): String =
+        title.replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_").trim().trim('.').take(80).ifBlank { "Playlist" }
 
     /** Copies [file] into MediaStore and returns its content URI. */
-    fun save(context: Context, file: File, audio: Boolean): Uri {
+    fun save(context: Context, file: File, audio: Boolean, sub: String = ""): Uri {
         val resolver = context.contentResolver
         val mime = mimeOf(file.name, audio)
         val collection = if (audio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
@@ -35,10 +40,10 @@ object Storage {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
                 put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, folderLabel(audio))
+                put(MediaStore.MediaColumns.RELATIVE_PATH, folderLabel(audio, sub))
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = resolver.insert(collection, values) ?: error("Couldn't create the file in ${folderLabel(audio)}")
+            val uri = resolver.insert(collection, values) ?: error("Couldn't create the file in ${folderLabel(audio, sub)}")
             try {
                 resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
                     ?: error("Couldn't write the file")
@@ -55,7 +60,7 @@ object Storage {
         val base = Environment.getExternalStoragePublicDirectory(
             if (audio) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES,
         )
-        val dir = File(base, FOLDER).apply { mkdirs() }
+        val dir = File(File(base, FOLDER), sub).apply { mkdirs() }
         var target = File(dir, file.name)
         var n = 1
         while (target.exists()) target = File(dir, "${file.nameWithoutExtension} ($n).${file.extension}").also { n++ }

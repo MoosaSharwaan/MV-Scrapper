@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -81,5 +82,17 @@ fun RowText(title: String, meta: String, modifier: Modifier = Modifier, metaColo
             Spacer(Modifier.height(2.dp))
             Text(meta, color = metaColor, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 2)
         }
+    }
+}
+
+/** Square amber tick box used for multi-select lists. */
+@Composable
+fun CheckMark(on: Boolean) {
+    val shape = RoundedCornerShape(5.dp)
+    Box(
+        Modifier.size(22.dp).border(2.dp, if (on) Amber else Mute, shape).background(if (on) Amber else Color.Transparent, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (on) Text("✓", color = Color(0xFF1A1204), fontSize = 14.sp)
     }
 }

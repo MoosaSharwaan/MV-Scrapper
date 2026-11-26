@@ -130,7 +130,7 @@ fun LibraryScreen() {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (selecting) {
-                        CheckBox(isSelected)
+                        CheckMark(isSelected)
                         Spacer(Modifier.width(12.dp))
                     }
                     Thumb(item.thumbnail, Modifier.width(88.dp), label = if (item.spec.isAudio) "audio" else "")
@@ -185,17 +185,6 @@ fun LibraryScreen() {
                 }
             },
         )
-    }
-}
-
-@Composable
-private fun CheckBox(on: Boolean) {
-    val shape = RoundedCornerShape(5.dp)
-    Box(
-        Modifier.size(22.dp).border(2.dp, if (on) Amber else Mute, shape).background(if (on) Amber else Color.Transparent, shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (on) Text("✓", color = Color(0xFF1A1204), fontSize = 14.sp)
     }
 }
 

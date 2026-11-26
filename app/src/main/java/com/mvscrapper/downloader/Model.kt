@@ -52,6 +52,27 @@ data class VideoMeta(
     val heights: List<Spec>,
 )
 
+/** One video inside a playlist or channel, as listed without fetching each video. */
+data class PlaylistEntry(
+    val url: String,
+    val title: String,
+    val durationSec: Int,
+    val thumbnail: String?,
+)
+
+data class PlaylistMeta(
+    val url: String,
+    val title: String,
+    val site: String,
+    val entries: List<PlaylistEntry>,
+)
+
+/** A link is either a single video or a playlist / channel. */
+sealed interface Fetched {
+    data class Video(val meta: VideoMeta) : Fetched
+    data class Playlist(val meta: PlaylistMeta) : Fetched
+}
+
 enum class State { Waiting, Running, Processing, Done, Failed, Canceled }
 
 /** A queue entry. Finished entries stay in the list until you delete them (rule R11). */
@@ -70,6 +91,8 @@ data class Item(
     val fileName: String? = null,
     val sizeBytes: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),
+    /** Sub-folder inside MV Downloader, e.g. the playlist name (rule R9). Empty for single videos. */
+    val folder: String = "",
 ) {
     val isActive: Boolean get() = state == State.Running || state == State.Processing
 }

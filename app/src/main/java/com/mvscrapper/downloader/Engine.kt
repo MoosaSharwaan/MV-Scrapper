@@ -4,9 +4,10 @@ import android.content.Context
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
-import com.yausername.youtubedl_android.mapper.VideoInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 /** Thin wrapper around youtubedl-android (yt-dlp + Python + ffmpeg + QuickJS). */
@@ -33,11 +34,27 @@ object Engine {
         }
     }
 
-    /** Reads title, length and formats for one video. Blocking. */
-    fun fetch(url: String): VideoMeta {
-        val request = YoutubeDLRequest(url).addOption("--no-playlist")
-        val info = YoutubeDL.getInstance().getInfo(request)
-        return toMeta(url, info)
+    /**
+     * Reads a link. A single video comes back with its formats; a playlist or channel comes
+     * back as a flat list of its videos (fast: each video isn't opened). Blocking.
+     * With [single], a video link that also carries a playlist is read as just that video.
+     */
+    fun fetch(url: String, single: Boolean = false): Fetched {
+        val request = YoutubeDLRequest(url)
+            .addOption("--dump-single-json")
+            .addOption("--flat-playlist")
+        if (single) request.addOption("--no-playlist")
+        val response = YoutubeDL.getInstance().execute(request, processId = null, redirectErrorStream = false, callback = null)
+        val json = try {
+            JSONObject(response.out)
+        } catch (e: Exception) {
+            throw IllegalStateException("ERROR: yt-dlp returned no video information")
+        }
+        return if (json.str("_type") == "playlist" || json.has("entries")) {
+            Fetched.Playlist(toPlaylist(url, json))
+        } else {
+            Fetched.Video(toVideo(url, json))
+        }
     }
 
     /** Downloads into [dir]. Blocking; throws on failure or cancel. */
@@ -82,33 +99,61 @@ object Engine {
         }
     }
 
-    private fun toMeta(url: String, info: VideoInfo): VideoMeta {
-        val formats = info.formats.orEmpty()
-        fun size(f: com.yausername.youtubedl_android.mapper.VideoFormat) =
-            maxOf(f.fileSize, f.fileSizeApproximate)
-
-        val bestAudio = formats
-            .filter { (it.vcodec ?: "none") == "none" && (it.acodec ?: "none") != "none" }
-            .maxOfOrNull { size(it) } ?: 0L
-
-        val heights = formats
-            .filter { (it.vcodec ?: "none") != "none" && it.height > 0 }
+    private fun toVideo(url: String, json: JSONObject): VideoMeta {
+        val formats = json.optJSONArray("formats") ?: JSONArray()
+        data class F(val height: Int, val video: Boolean, val audio: Boolean, val size: Long)
+        val list = (0 until formats.length()).mapNotNull { i ->
+            val f = formats.optJSONObject(i) ?: return@mapNotNull null
+            val v = f.optString("vcodec", "none").let { it.isNotEmpty() && it != "none" && it != "null" }
+            val a = f.optString("acodec", "none").let { it.isNotEmpty() && it != "none" && it != "null" }
+            val size = maxOf(f.optDouble("filesize", 0.0).safeLong(), f.optDouble("filesize_approx", 0.0).safeLong())
+            F(f.optDouble("height", 0.0).safeLong().toInt(), v, a, size)
+        }
+        val bestAudio = list.filter { it.audio && !it.video }.maxOfOrNull { it.size } ?: 0L
+        val heights = list
+            .filter { it.video && it.height > 0 }
             .groupBy { it.height }
-            .map { (h, list) ->
-                val video = list.maxOfOrNull { size(it) } ?: 0L
+            .map { (h, fs) ->
+                val video = fs.maxOf { it.size }
                 Spec.height(h, if (video > 0) video + bestAudio else 0L)
             }
             .sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
 
         return VideoMeta(
             url = url,
-            title = info.title ?: info.fulltitle ?: url,
-            thumbnail = info.thumbnail,
-            durationSec = info.duration,
-            site = info.extractorKey ?: info.extractor ?: "",
+            title = json.str("title").ifBlank { json.str("fulltitle").ifBlank { url } },
+            thumbnail = json.str("thumbnail").ifBlank { null },
+            durationSec = json.optDouble("duration", 0.0).safeLong().toInt(),
+            site = json.str("extractor_key").ifBlank { json.str("extractor") },
             heights = heights,
         )
     }
+
+    private fun toPlaylist(url: String, json: JSONObject): PlaylistMeta {
+        val entries = json.optJSONArray("entries") ?: JSONArray()
+        val list = (0 until entries.length()).mapNotNull { i ->
+            val e = entries.optJSONObject(i) ?: return@mapNotNull null
+            val link = listOf(e.str("url"), e.str("webpage_url"), e.str("original_url"))
+                .firstOrNull { it.startsWith("http") } ?: return@mapNotNull null
+            val title = e.str("title").ifBlank { link }
+            if (title == "[Private video]" || title == "[Deleted video]") return@mapNotNull null
+            val thumbs = e.optJSONArray("thumbnails")
+            val thumb = e.str("thumbnail").ifBlank { null }
+                ?: thumbs?.optJSONObject(thumbs.length() - 1)?.str("url")?.ifBlank { null }
+            PlaylistEntry(link, title, e.optDouble("duration", 0.0).safeLong().toInt(), thumb)
+        }
+        return PlaylistMeta(
+            url = url,
+            title = json.str("title").ifBlank { "Playlist" },
+            site = json.str("extractor_key").ifBlank { json.str("extractor") },
+            entries = list,
+        )
+    }
+
+    /** optString, but a JSON null reads as empty instead of the text "null". */
+    private fun JSONObject.str(key: String): String = optString(key).let { if (it == "null") "" else it }
+
+    private fun Double.safeLong(): Long = if (isNaN() || isInfinite()) 0L else toLong()
 
     /** yt-dlp errors are long; keep the line that explains what went wrong. */
     fun cleanError(t: Throwable): String {

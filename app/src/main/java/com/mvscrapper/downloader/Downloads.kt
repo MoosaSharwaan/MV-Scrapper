@@ -54,6 +54,27 @@ object Downloads {
         pump()
     }
 
+    /** Queues every chosen video of a playlist, saved together in a folder named after it. */
+    fun enqueueAll(playlist: PlaylistMeta, entries: List<PlaylistEntry>, spec: Spec) {
+        val folder = Storage.folderName(playlist.title)
+        val now = System.currentTimeMillis()
+        val items = entries.mapIndexed { i, e ->
+            Item(
+                id = UUID.randomUUID().toString(),
+                url = e.url,
+                title = e.title,
+                thumbnail = e.thumbnail,
+                durationSec = e.durationSec,
+                spec = spec,
+                createdAt = now + i, // keeps playlist order in the queue
+                folder = folder,
+            )
+        }
+        synchronized(lock) { _items.value = _items.value + items }
+        persist()
+        pump()
+    }
+
     fun cancel(id: String) {
         update(id) { if (it.state == State.Done) it else it.copy(state = State.Canceled, message = "Canceled") }
         scope.launch { Engine.cancel(id) }
@@ -139,12 +160,12 @@ object Downloads {
                 ?.filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") && !it.name.contains(".temp.") }
                 ?.maxByOrNull { it.length() }
                 ?: error("yt-dlp finished but no file was found")
-            val uri = Storage.save(app, file, item.spec.isAudio)
+            val uri = Storage.save(app, file, item.spec.isAudio, item.folder)
             update(id) {
                 it.copy(
                     state = State.Done, progress = 1f, etaSec = 0,
                     fileUri = uri.toString(), fileName = file.name, sizeBytes = file.length(),
-                    message = "Saved to ${Storage.folderLabel(item.spec.isAudio)}",
+                    message = "Saved to ${Storage.folderLabel(item.spec.isAudio, item.folder)}",
                 )
             }
             dir.deleteRecursively()

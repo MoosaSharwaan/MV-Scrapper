@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
@@ -41,6 +43,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvscrapper.downloader.Downloads
 import com.mvscrapper.downloader.Engine
+import com.mvscrapper.downloader.Fetched
+import com.mvscrapper.downloader.PlaylistEntry
+import com.mvscrapper.downloader.PlaylistMeta
 import com.mvscrapper.downloader.Spec
 import com.mvscrapper.downloader.State
 import com.mvscrapper.downloader.VideoMeta
@@ -58,9 +63,9 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
     var url by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var meta by remember { mutableStateOf<VideoMeta?>(null) }
+    var meta by remember { mutableStateOf<Fetched?>(null) }
 
-    fun fetch() {
+    fun fetch(single: Boolean = false) {
         val link = extractUrl(url.trim()) ?: url.trim()
         if (link.isEmpty() || engine != Engine.Status.Ready) return
         loading = true
@@ -68,7 +73,7 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
         meta = null
         scope.launch {
             try {
-                meta = withContext(Dispatchers.IO) { Engine.fetch(link) }
+                meta = withContext(Dispatchers.IO) { Engine.fetch(link, single) }
             } catch (t: Throwable) {
                 error = Engine.cleanError(t)
             } finally {
@@ -87,20 +92,39 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
         }
     }
 
-    val found = meta
-    if (found != null) {
-        InfoContent(
-            meta = found,
-            onBack = { meta = null },
-            onDownload = { spec ->
-                Downloads.enqueue(found, spec)
-                Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
-                meta = null
-                url = ""
-                onAdded()
-            },
-        )
-        return
+    when (val found = meta) {
+        is Fetched.Video -> {
+            InfoContent(
+                meta = found.meta,
+                onBack = { meta = null },
+                onDownload = { spec ->
+                    Downloads.enqueue(found.meta, spec)
+                    Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
+                    meta = null
+                    url = ""
+                    onAdded()
+                },
+            )
+            return
+        }
+        is Fetched.Playlist -> {
+            PlaylistContent(
+                playlist = found.meta,
+                // A YouTube "watch?v=…&list=…" link points at one video inside a playlist.
+                canPickSingle = Regex("""[?&]v=""").containsMatchIn(found.meta.url),
+                onOnlyThis = { fetch(single = true) },
+                onBack = { meta = null },
+                onDownload = { entries, spec ->
+                    Downloads.enqueueAll(found.meta, entries, spec)
+                    Toast.makeText(context, "Added ${entries.size} to queue", Toast.LENGTH_SHORT).show()
+                    meta = null
+                    url = ""
+                    onAdded()
+                },
+            )
+            return
+        }
+        null -> {}
     }
 
     Column(
@@ -205,6 +229,70 @@ private fun InfoContent(meta: VideoMeta, onBack: () -> Unit, onDownload: (Spec) 
                 val size = formatSize(picked.sizeBytes)
                 Text(if (size.isEmpty()) "Download" else "Download · ~$size")
             }
+        }
+    }
+}
+
+/** Every video in a playlist or channel, all ticked. One format applies to all of them. */
+@Composable
+private fun PlaylistContent(
+    playlist: PlaylistMeta,
+    canPickSingle: Boolean,
+    onOnlyThis: () -> Unit,
+    onBack: () -> Unit,
+    onDownload: (List<PlaylistEntry>, Spec) -> Unit,
+) {
+    var picked by remember(playlist) { mutableStateOf(Spec.MP4_1080) }
+    var chosen by remember(playlist) { mutableStateOf(playlist.entries.indices.toSet()) }
+    val all = chosen.size == playlist.entries.size
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onBack, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("‹ Back") }
+                    Eyebrow(dots("Playlist", playlist.site), color = Amber)
+                    Text(playlist.title, color = Ink, fontSize = 20.sp, lineHeight = 26.sp)
+                    Text("${playlist.entries.size} videos", color = Mute, fontSize = 13.sp)
+                    if (canPickSingle) {
+                        OutlinedButton(onClick = onOnlyThis) { Text("Only the video in this link") }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Eyebrow("Format for all videos")
+                }
+            }
+            items(Spec.PRESETS) { spec ->
+                OptionRow(spec.label, if (spec.isAudio) "audio" else "", picked == spec) { picked = spec }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Eyebrow("Videos · ${chosen.size} of ${playlist.entries.size} selected", modifier = Modifier.weight(1f))
+                    TextButton(onClick = { chosen = if (all) emptySet() else playlist.entries.indices.toSet() }) {
+                        Text(if (all) "Select none" else "Select all")
+                    }
+                }
+            }
+            itemsIndexed(playlist.entries) { i, entry ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { chosen = if (i in chosen) chosen - i else chosen + i }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CheckMark(i in chosen)
+                    Spacer(Modifier.width(12.dp))
+                    Thumb(entry.thumbnail, Modifier.width(80.dp))
+                    Spacer(Modifier.width(12.dp))
+                    RowText(entry.title, dots("${i + 1}", formatDuration(entry.durationSec)), Modifier.weight(1f))
+                }
+            }
+            item { Spacer(Modifier.height(8.dp)) }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onBack) { Text("Cancel") }
+            Button(
+                onClick = { onDownload(playlist.entries.filterIndexed { i, _ -> i in chosen }, picked) },
+                enabled = chosen.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) { Text("Download ${chosen.size}") }
         }
     }
 }
