@@ -198,12 +198,14 @@ object Downloads {
     private fun run(id: String) {
         val item = get(id) ?: return
         val dir = workDir(id).apply { mkdirs() }
+        var skipped = false
         try {
             if (item.isTorrent) {
                 runTorrent(item, dir)
                 return
             }
             Engine.download(item, dir) { p, eta, line ->
+                if (line.contains("already been recorded in the archive")) skipped = true
                 val processing = POST_STEPS.any { line.startsWith(it) }
                 update(id, persist = false) {
                     if (it.state == State.Canceled) it
@@ -215,6 +217,10 @@ object Downloads {
                 }
             }
             if (get(id)?.state != State.Running && get(id)?.state != State.Processing) return
+            if (skipped) {
+                update(id) { it.copy(state = State.Canceled, message = "Skipped: downloaded before. Turn off \"Skip videos already downloaded\" in Settings to get it again.") }
+                return
+            }
             update(id) { it.copy(state = State.Processing, message = "Saving") }
             val file = dir.listFiles()
                 ?.filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") && !it.name.contains(".temp.") }

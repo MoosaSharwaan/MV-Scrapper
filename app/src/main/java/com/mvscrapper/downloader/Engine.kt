@@ -21,9 +21,13 @@ object Engine {
     var initError: String? = null
         private set
 
+    /** yt-dlp's download archive: links listed here are skipped (Settings → Skip videos already downloaded). */
+    private var archiveFile: File? = null
+
     /** Unpacks Python and ffmpeg on first run, which takes a few seconds. Call off the main thread. */
     fun init(context: Context) {
         try {
+            archiveFile = File(context.filesDir, "download-archive.txt")
             YoutubeDL.getInstance().init(context)
             FFmpeg.getInstance().init(context)
             _version.value = YoutubeDL.getInstance().version(context)
@@ -44,6 +48,7 @@ object Engine {
             .addOption("--dump-single-json")
             .addOption("--flat-playlist")
         if (single) request.addOption("--no-playlist")
+        Prefs.playlistLimit.value.takeIf { it > 0 }?.let { request.addOption("--playlist-end", it) }
         val response = YoutubeDL.getInstance().execute(request, processId = null, redirectErrorStream = false, callback = null)
         val json = try {
             JSONObject(response.out)
@@ -71,7 +76,14 @@ object Engine {
             request.addOption("-x").addOption("--audio-format", spec.audio)
         } else {
             request.addOption("--merge-output-format", spec.container)
+            if (Prefs.embedChapters.on) request.addOption("--embed-chapters")
+            if (Prefs.embedSubtitles.on) {
+                request.addOption("--write-subs").addOption("--sub-langs", "en.*,-live_chat").addOption("--embed-subs")
+            }
         }
+        if (Prefs.embedMetadata.on) request.addOption("--embed-metadata")
+        if (Prefs.embedThumbnail.on) request.addOption("--embed-thumbnail")
+        if (Prefs.skipDownloaded.on) archiveFile?.let { request.addOption("--download-archive", it.absolutePath) }
         YoutubeDL.getInstance().execute(
             request,
             processId = item.id,

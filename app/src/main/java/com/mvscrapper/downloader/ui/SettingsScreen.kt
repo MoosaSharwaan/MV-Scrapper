@@ -41,6 +41,7 @@ fun SettingsScreen() {
     val parallel by Prefs.parallel.collectAsStateWithLifecycle()
     val wifiOnly by Prefs.wifiOnly.collectAsStateWithLifecycle()
     val autoUpdate by Prefs.autoUpdate.collectAsStateWithLifecycle()
+    val playlistLimit by Prefs.playlistLimit.collectAsStateWithLifecycle()
     val version by Engine.version.collectAsStateWithLifecycle()
     val engine by Engine.status.collectAsStateWithLifecycle()
     val items by Downloads.items.collectAsStateWithLifecycle()
@@ -83,7 +84,26 @@ fun SettingsScreen() {
                 enabled = !updating && !busy && engine == Engine.Status.Ready,
             ) { Text(if (updating) "Updating…" else "Update") }
         }
-        Setting("Save location", "Video: ${Storage.folderLabel(false)}\nAudio: ${Storage.folderLabel(true)}") {}
+        Setting(
+            "Save location",
+            "Video: ${Storage.folderLabel(false)}\nAudio: ${Storage.folderLabel(true)}\nTorrents: ${Storage.downloadsLabel()}",
+        ) {}
+
+        Eyebrow("Download options", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+        FlagSetting(Prefs.embedMetadata, "Embed title and details", "Title, uploader and date are saved inside the file.")
+        FlagSetting(Prefs.embedThumbnail, "Embed thumbnail", "Shows as cover art in players and music apps.")
+        FlagSetting(Prefs.embedChapters, "Embed chapters", "Video chapters, where the site has them.")
+        FlagSetting(Prefs.embedSubtitles, "Embed English subtitles", "When the site offers them. Makes downloads a little slower.")
+        FlagSetting(
+            Prefs.skipDownloaded, "Skip videos already downloaded",
+            "Remembers what you've downloaded and skips it next time, even after you delete the file.",
+        )
+        Setting("Playlist limit", "How many videos to list from a playlist or channel. For channels, the newest.") {
+            OutlinedButton(onClick = {
+                val all = Prefs.PLAYLIST_LIMITS
+                Prefs.setPlaylistLimit(all[(all.indexOf(playlistLimit) + 1) % all.size])
+            }) { Text(if (playlistLimit == 0) "All" else "First $playlistLimit") }
+        }
 
         Text(
             "Download only what you have the right to save. DRM-protected video can't be downloaded. " +
@@ -108,5 +128,13 @@ private fun Setting(title: String, detail: String, control: @Composable () -> Un
             control()
         }
         HorizontalDivider(color = Line)
+    }
+}
+
+@Composable
+private fun FlagSetting(flag: Prefs.Flag, title: String, detail: String) {
+    val on by flag.state.collectAsStateWithLifecycle()
+    Setting(title, detail) {
+        Switch(checked = on, onCheckedChange = { flag.set(it) })
     }
 }

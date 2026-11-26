@@ -22,8 +22,40 @@ object Prefs {
     val autoUpdate: StateFlow<Boolean> = _autoUpdate
     val noticeAccepted: StateFlow<Boolean> = _noticeAccepted
 
+    /** An on/off setting saved under [key]. */
+    class Flag(private val key: String, default: Boolean) {
+        private val _state = MutableStateFlow(default)
+        val state: StateFlow<Boolean> = _state
+        val on: Boolean get() = _state.value
+        fun load() { _state.value = sp.getBoolean(key, _state.value) }
+        fun set(v: Boolean) {
+            _state.value = v
+            sp.edit().putBoolean(key, v).apply()
+        }
+    }
+
+    // v2 download options, from yt-dlp's post-processing and MeTube's defaults.
+    val embedMetadata = Flag("embed_metadata", true)
+    val embedThumbnail = Flag("embed_thumbnail", true)
+    val embedChapters = Flag("embed_chapters", true)
+    val embedSubtitles = Flag("embed_subtitles", false)
+    val skipDownloaded = Flag("skip_downloaded", false)
+    private val flags = listOf(embedMetadata, embedThumbnail, embedChapters, embedSubtitles, skipDownloaded)
+
+    /** How many videos to list from a playlist or channel: the first N (for channels, the newest). 0 = all. */
+    val PLAYLIST_LIMITS = listOf(0, 10, 25, 50, 100, 200)
+    private val _playlistLimit = MutableStateFlow(0)
+    val playlistLimit: StateFlow<Int> = _playlistLimit
+
+    fun setPlaylistLimit(n: Int) {
+        _playlistLimit.value = n
+        sp.edit().putInt("playlist_limit", n).apply()
+    }
+
     fun init(context: Context) {
         sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        flags.forEach { it.load() }
+        _playlistLimit.value = sp.getInt("playlist_limit", 0)
         _parallel.value = sp.getInt("parallel", 2).coerceIn(MIN_PARALLEL, MAX_PARALLEL)
         _wifiOnly.value = sp.getBoolean("wifi_only", true)
         _autoUpdate.value = sp.getBoolean("auto_update", true)

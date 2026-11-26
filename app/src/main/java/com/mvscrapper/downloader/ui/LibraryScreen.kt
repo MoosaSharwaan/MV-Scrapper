@@ -10,6 +10,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +56,8 @@ import com.mvscrapper.downloader.State
 import com.mvscrapper.downloader.Storage
 import kotlinx.coroutines.launch
 
+private enum class Sort(val label: String) { Newest("Newest"), Name("Name"), Size("Largest") }
+
 private enum class Filter(val label: String) { All("All"), Video("Video"), Audio("Audio"), Files("Torrents") }
 
 /**
@@ -69,11 +73,18 @@ fun LibraryScreen() {
 
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(Filter.All) }
+    var sort by rememberSaveable { mutableStateOf(Sort.Newest) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var confirm by remember { mutableStateOf<Set<String>?>(null) }
     val selecting = selected.isNotEmpty()
 
-    val done = items.filter { it.state == State.Done }.sortedByDescending { it.createdAt }
+    val done = items.filter { it.state == State.Done }.let { list ->
+        when (sort) {
+            Sort.Newest -> list.sortedByDescending { it.createdAt }
+            Sort.Name -> list.sortedBy { it.title.lowercase() }
+            Sort.Size -> list.sortedByDescending { it.sizeBytes }
+        }
+    }
     val shown = done.filter {
         (query.isBlank() || it.title.contains(query.trim(), ignoreCase = true)) &&
             when (filter) {
@@ -101,11 +112,18 @@ fun LibraryScreen() {
                 value = query, onValueChange = { query = it }, singleLine = true,
                 modifier = Modifier.fillMaxWidth(), placeholder = { Text("Search downloads") },
             )
-            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Filter.entries.forEach { f ->
                     FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f.label) })
                 }
             }
+            TextButton(
+                onClick = { sort = Sort.entries[(sort.ordinal + 1) % Sort.entries.size] },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) { Text("Sort: ${sort.label}") }
         }
 
         if (shown.isEmpty()) {
