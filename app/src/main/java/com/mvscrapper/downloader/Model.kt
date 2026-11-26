@@ -112,6 +112,9 @@ data class Item(
     val section: String = "",
     /** Save one file per chapter instead of one file. */
     val splitChapters: Boolean = false,
+    /** Items queued together from one playlist share a group, shown as one card in the Queue. */
+    val group: String = "",
+    val groupTitle: String = "",
 ) {
     val isActive: Boolean get() = state == State.Running || state == State.Processing
     val isTorrent: Boolean get() = url.startsWith("magnet:", ignoreCase = true)

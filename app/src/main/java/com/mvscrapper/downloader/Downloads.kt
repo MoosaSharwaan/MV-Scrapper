@@ -61,8 +61,11 @@ object Downloads {
     fun enqueueAll(playlist: PlaylistMeta, entries: List<PlaylistEntry>, spec: Spec) {
         val folder = Storage.folderName(playlist.title)
         val now = System.currentTimeMillis()
+        val group = if (entries.size > 1) UUID.randomUUID().toString() else ""
         val items = entries.mapIndexed { i, e ->
             Item(
+                group = group,
+                groupTitle = playlist.title,
                 id = UUID.randomUUID().toString(),
                 url = e.url,
                 title = e.title,
@@ -96,6 +99,18 @@ object Downloads {
         )
         synchronized(lock) { _items.value = _items.value + item }
         persist()
+        pump()
+    }
+
+    /** Cancels every unfinished item of a playlist group. */
+    fun cancelGroup(group: String) {
+        _items.value.filter { it.group == group && (it.isActive || it.state == State.Waiting) }.forEach { cancel(it.id) }
+    }
+
+    /** Puts every failed or canceled item of a playlist group back in the queue. */
+    fun retryGroup(group: String) {
+        _items.value.filter { it.group == group && (it.state == State.Failed || it.state == State.Canceled) }
+            .forEach { item -> update(item.id) { it.copy(state = State.Waiting, progress = 0f, etaSec = 0, message = "") } }
         pump()
     }
 
