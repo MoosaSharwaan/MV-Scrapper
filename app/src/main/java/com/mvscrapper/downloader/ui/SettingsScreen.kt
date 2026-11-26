@@ -33,6 +33,7 @@ import com.mvscrapper.downloader.Downloads
 import com.mvscrapper.downloader.Engine
 import com.mvscrapper.downloader.Prefs
 import com.mvscrapper.downloader.Storage
+import com.mvscrapper.downloader.Subscriptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,6 +47,9 @@ fun SettingsScreen() {
     val autoUpdate by Prefs.autoUpdate.collectAsStateWithLifecycle()
     val playlistLimit by Prefs.playlistLimit.collectAsStateWithLifecycle()
     val speedLimit by Prefs.speedLimit.collectAsStateWithLifecycle()
+    val nameTemplate by Prefs.nameTemplate.collectAsStateWithLifecycle()
+    val subs by Subscriptions.list.collectAsStateWithLifecycle()
+    val checking by Subscriptions.checking.collectAsStateWithLifecycle()
     val hasCookies by Engine.hasCookies.collectAsStateWithLifecycle()
     val pickCookies = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -133,11 +137,39 @@ fun SettingsScreen() {
                 OutlinedButton(onClick = { pickCookies.launch(arrayOf("text/plain", "*/*")) }) { Text("Import") }
             }
         }
+        Setting("File names", "How downloaded files are named.") {
+            OutlinedButton(onClick = {
+                Prefs.setNameTemplate((nameTemplate + 1) % Prefs.NAME_TEMPLATES.size)
+            }) { Text(Prefs.NAME_TEMPLATES[nameTemplate].first) }
+        }
         Setting("Playlist limit", "How many videos to list from a playlist or channel. For channels, the newest.") {
             OutlinedButton(onClick = {
                 val all = Prefs.PLAYLIST_LIMITS
                 Prefs.setPlaylistLimit(all[(all.indexOf(playlistLimit) + 1) % all.size])
             }) { Text(if (playlistLimit == 0) "All" else "First $playlistLimit") }
+        }
+
+        Eyebrow("Subscriptions", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+        Text(
+            "Checked only when the app opens. Subscribe from a playlist or channel on Home.",
+            color = Mute, fontSize = 13.sp, lineHeight = 18.sp,
+        )
+        if (subs.isNotEmpty()) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val added = withContext(Dispatchers.IO) { Subscriptions.checkAll() }
+                        Toast.makeText(context, if (added == 0) "No new videos" else "Added $added to the queue", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                enabled = !checking && engine == Engine.Status.Ready,
+                modifier = Modifier.padding(top = 8.dp),
+            ) { Text(if (checking) "Checking…" else "Check now") }
+        }
+        subs.forEach { sub ->
+            Setting(sub.title, dots(sub.spec.label, if (sub.lastAdded > 0) "${sub.lastAdded} new last check" else "")) {
+                OutlinedButton(onClick = { Subscriptions.remove(sub.id) }) { Text("Remove") }
+            }
         }
 
         Text(

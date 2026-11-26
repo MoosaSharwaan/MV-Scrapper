@@ -108,6 +108,10 @@ data class Item(
     val torrentFiles: List<Int> = emptyList(),
     /** Every saved file, for torrents with more than one. [fileUri] is the first. */
     val fileUris: List<String> = emptyList(),
+    /** yt-dlp download section, e.g. "*1:00-2:30". Empty = the whole video. */
+    val section: String = "",
+    /** Save one file per chapter instead of one file. */
+    val splitChapters: Boolean = false,
 ) {
     val isActive: Boolean get() = state == State.Running || state == State.Processing
     val isTorrent: Boolean get() = url.startsWith("magnet:", ignoreCase = true)

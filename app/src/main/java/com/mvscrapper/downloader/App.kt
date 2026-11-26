@@ -8,6 +8,7 @@ class App : Application() {
         super.onCreate()
         Prefs.init(this)
         Downloads.init(this)
+        Subscriptions.init(this)
         thread(name = "engine-init") {
             Engine.init(this)
             if (Engine.status.value == Engine.Status.Ready) {
@@ -15,6 +16,7 @@ class App : Application() {
                 // download starts, so yt-dlp isn't replaced while it is running.
                 if (Prefs.autoUpdate.value && Net.isUnmetered(this)) Engine.update(this)
                 Downloads.pump() // start anything left waiting from last time
+                Subscriptions.checkAll() // rule R12: only when the app opens
             }
         }
     }

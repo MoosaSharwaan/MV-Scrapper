@@ -50,6 +50,8 @@ import com.mvscrapper.downloader.PlaylistEntry
 import com.mvscrapper.downloader.PlaylistMeta
 import com.mvscrapper.downloader.Spec
 import com.mvscrapper.downloader.State
+import com.mvscrapper.downloader.Subscriptions
+import androidx.compose.material3.Switch
 import com.mvscrapper.downloader.TorrentFile
 import com.mvscrapper.downloader.TorrentMeta
 import com.mvscrapper.downloader.Torrents
@@ -130,8 +132,8 @@ fun HomeScreen(sharedUrl: MutableState<String?>, onAdded: () -> Unit) {
             InfoContent(
                 meta = found.meta,
                 onBack = { meta = null },
-                onDownload = { spec ->
-                    Downloads.enqueue(found.meta, spec)
+                onDownload = { spec, section, split ->
+                    Downloads.enqueue(found.meta, spec, section, split)
                     Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
                     meta = null
                     url = ""
@@ -247,8 +249,14 @@ private fun Recent() {
 
 /** What yt-dlp found: presets first, then each resolution (rule R10). */
 @Composable
-private fun InfoContent(meta: VideoMeta, onBack: () -> Unit, onDownload: (Spec) -> Unit) {
+private fun InfoContent(meta: VideoMeta, onBack: () -> Unit, onDownload: (Spec, String, Boolean) -> Unit) {
     var picked by remember(meta) { mutableStateOf(Spec.MP4_1080) }
+    var showPart by remember(meta) { mutableStateOf(false) }
+    var from by remember(meta) { mutableStateOf("") }
+    var to by remember(meta) { mutableStateOf("") }
+    var split by remember(meta) { mutableStateOf(false) }
+    val section = sectionOf(from, to)
+    val badRange = (from.isNotBlank() || to.isNotBlank()) && section == null
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.weight(1f).padding(horizontal = 20.dp),
@@ -273,11 +281,33 @@ private fun InfoContent(meta: VideoMeta, onBack: () -> Unit, onDownload: (Spec) 
                     OptionRow(spec.label, formatSize(spec.sizeBytes).let { if (it.isEmpty()) "" else "~$it" }, picked == spec) { picked = spec }
                 }
             }
+            item {
+                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showPart = !showPart }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                        Text(if (showPart) "Advanced ▴" else "Advanced ▾: part of the video, chapters")
+                    }
+                    if (showPart) {
+                        Eyebrow("Only part of the video")
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(from, { from = it }, Modifier.weight(1f), label = { Text("From (1:30)") }, singleLine = true)
+                            OutlinedTextField(to, { to = it }, Modifier.weight(1f), label = { Text("To (end)") }, singleLine = true)
+                        }
+                        if (badRange) Text("Use minutes:seconds like 1:30, or hours like 1:02:30.", color = Danger, fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Split by chapters", color = Ink, fontSize = 15.sp)
+                                Text("One file per chapter, in a folder named after the video.", color = Mute, fontSize = 13.sp)
+                            }
+                            Switch(checked = split, onCheckedChange = { split = it })
+                        }
+                    }
+                }
+            }
             item { Spacer(Modifier.height(8.dp)) }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = onBack) { Text("Cancel") }
-            Button(onClick = { onDownload(picked) }, modifier = Modifier.weight(1f)) {
+            Button(onClick = { onDownload(picked, section.orEmpty(), split) }, enabled = !badRange, modifier = Modifier.weight(1f)) {
                 val size = formatSize(picked.sizeBytes)
                 Text(if (size.isEmpty()) "Download" else "Download · ~$size")
             }
@@ -309,6 +339,12 @@ private fun PlaylistContent(
                     if (canPickSingle) {
                         OutlinedButton(onClick = onOnlyThis) { Text("Only the video in this link") }
                     }
+                    val subs by Subscriptions.list.collectAsStateWithLifecycle()
+                    val subscribed = subs.any { it.url == playlist.url }
+                    OutlinedButton(
+                        onClick = { Subscriptions.add(playlist, picked) },
+                        enabled = !subscribed,
+                    ) { Text(if (subscribed) "Subscribed" else "Subscribe: get new uploads when the app opens") }
                     Spacer(Modifier.height(4.dp))
                     Eyebrow("Format for all videos")
                 }
@@ -405,4 +441,20 @@ private fun TorrentContent(torrent: TorrentMeta, onBack: () -> Unit, onDownload:
             ) { Text(dots("Download ${chosen.size}", formatSize(total))) }
         }
     }
+}
+
+/** "1:30" / "1:02:30" / "90" → seconds, or null when it isn't a time. */
+private fun parseTime(t: String): Int? {
+    val parts = t.trim().split(":")
+    if (parts.isEmpty() || parts.size > 3 || parts.any { it.isEmpty() || it.any { c -> !c.isDigit() } }) return null
+    return parts.fold(0) { acc, p -> acc * 60 + p.toInt() }
+}
+
+/** yt-dlp --download-sections value for a From/To pair; "" when both are empty, null when invalid. */
+private fun sectionOf(from: String, to: String): String? {
+    if (from.isBlank() && to.isBlank()) return ""
+    val a = if (from.isBlank()) 0 else parseTime(from) ?: return null
+    val b = if (to.isBlank()) null else parseTime(to) ?: return null
+    if (b != null && b <= a) return null
+    return "*$a-${b ?: "inf"}"
 }

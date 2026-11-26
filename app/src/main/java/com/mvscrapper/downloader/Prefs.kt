@@ -45,6 +45,21 @@ object Prefs {
     val nightly = Flag("ytdlp_nightly", false)
     private val flags = listOf(embedMetadata, embedThumbnail, embedChapters, embedSubtitles, skipDownloaded, sponsorBlock, nightly)
 
+    /** File name styles (rule R9 default first). Values are yt-dlp output templates. */
+    val NAME_TEMPLATES = listOf(
+        "Title" to "%(title).120B.%(ext)s",
+        "Uploader - Title" to "%(uploader).40B - %(title).100B.%(ext)s",
+        "Date - Title" to "%(upload_date>%Y-%m-%d)s - %(title).100B.%(ext)s",
+        "Title [id]" to "%(title).100B [%(id)s].%(ext)s",
+    )
+    private val _nameTemplate = MutableStateFlow(0)
+    val nameTemplate: StateFlow<Int> = _nameTemplate
+
+    fun setNameTemplate(i: Int) {
+        _nameTemplate.value = i
+        sp.edit().putInt("name_template", i).apply()
+    }
+
     /** Speed limit per download in MB/s. 0 = no limit. Applies to yt-dlp downloads. */
     val SPEED_LIMITS = listOf(0, 1, 2, 5, 10)
     private val _speedLimit = MutableStateFlow(0)
@@ -70,6 +85,7 @@ object Prefs {
         flags.forEach { it.load() }
         _playlistLimit.value = sp.getInt("playlist_limit", 0)
         _speedLimit.value = sp.getInt("speed_limit", 0)
+        _nameTemplate.value = sp.getInt("name_template", 0).coerceIn(0, NAME_TEMPLATES.lastIndex)
         _parallel.value = sp.getInt("parallel", 2).coerceIn(MIN_PARALLEL, MAX_PARALLEL)
         _wifiOnly.value = sp.getBoolean("wifi_only", true)
         _autoUpdate.value = sp.getBoolean("auto_update", true)

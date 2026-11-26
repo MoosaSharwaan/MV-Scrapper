@@ -35,6 +35,7 @@ object Store {
         put("fileUri", it.fileUri ?: ""); put("fileName", it.fileName ?: "")
         put("size", it.sizeBytes); put("created", it.createdAt); put("folder", it.folder)
         put("torrentFiles", JSONArray(it.torrentFiles)); put("fileUris", JSONArray(it.fileUris))
+        put("section", it.section); put("splitChapters", it.splitChapters)
         put("spec", JSONObject().apply {
             put("label", it.spec.label); put("format", it.spec.format); put("sort", it.spec.sort)
             put("audio", it.spec.audio); put("container", it.spec.container); put("size", it.spec.sizeBytes)
@@ -62,6 +63,8 @@ object Store {
             folder = o.optString("folder"),
             torrentFiles = o.optJSONArray("torrentFiles")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty(),
             fileUris = o.optJSONArray("fileUris")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
+            section = o.optString("section"),
+            splitChapters = o.optBoolean("splitChapters"),
         )
     }
 }

@@ -39,8 +39,11 @@ object Downloads {
 
     fun get(id: String): Item? = _items.value.firstOrNull { it.id == id }
 
-    fun enqueue(meta: VideoMeta, spec: Spec) {
+    fun enqueue(meta: VideoMeta, spec: Spec, section: String = "", splitChapters: Boolean = false) {
         val item = Item(
+            section = section,
+            splitChapters = splitChapters,
+            folder = if (splitChapters) Storage.folderName(meta.title) else "",
             id = UUID.randomUUID().toString(),
             url = meta.url,
             title = meta.title,
@@ -222,16 +225,22 @@ object Downloads {
                 return
             }
             update(id) { it.copy(state = State.Processing, message = "Saving") }
-            val file = dir.listFiles()
+            fun finished(d: File) = d.listFiles()
                 ?.filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") && !it.name.contains(".temp.") }
-                ?.maxByOrNull { it.length() }
-                ?: error("yt-dlp finished but no file was found")
-            val uri = Storage.save(app, file, item.spec.isAudio, item.folder)
+                .orEmpty()
+            // Split by chapters: save every chapter file; if the video had no chapters, the whole file.
+            val chapters = if (item.splitChapters) finished(File(dir, "chapters")).sortedBy { it.name } else emptyList()
+            val files = chapters.ifEmpty {
+                listOf(finished(dir).maxByOrNull { it.length() } ?: error("yt-dlp finished but no file was found"))
+            }
+            val uris = files.map { Storage.save(app, it, item.spec.isAudio, item.folder).toString() }
             update(id) {
                 it.copy(
                     state = State.Done, progress = 1f, etaSec = 0,
-                    fileUri = uri.toString(), fileName = file.name, sizeBytes = file.length(),
-                    message = "Saved to ${Storage.folderLabel(item.spec.isAudio, item.folder)}",
+                    fileUri = uris.first(), fileUris = uris, fileName = files.first().name,
+                    sizeBytes = files.sumOf { f -> f.length() },
+                    message = if (files.size > 1) "Saved ${files.size} chapters to ${Storage.folderLabel(item.spec.isAudio, item.folder)}"
+                    else "Saved to ${Storage.folderLabel(item.spec.isAudio, item.folder)}",
                 )
             }
             dir.deleteRecursively()

@@ -73,12 +73,12 @@ object Engine {
      * back as a flat list of its videos (fast: each video isn't opened). Blocking.
      * With [single], a video link that also carries a playlist is read as just that video.
      */
-    fun fetch(url: String, single: Boolean = false): Fetched {
+    fun fetch(url: String, single: Boolean = false, limit: Int? = null): Fetched {
         val request = YoutubeDLRequest(url)
             .addOption("--dump-single-json")
             .addOption("--flat-playlist")
         if (single) request.addOption("--no-playlist")
-        Prefs.playlistLimit.value.takeIf { it > 0 }?.let { request.addOption("--playlist-end", it) }
+        (limit ?: Prefs.playlistLimit.value).takeIf { it > 0 }?.let { request.addOption("--playlist-end", it) }
         addCookies(request)
         val response = YoutubeDL.getInstance().execute(request, processId = null, redirectErrorStream = false, callback = null)
         val json = try {
@@ -101,7 +101,12 @@ object Engine {
             .addOption("--no-mtime")
             .addOption("-f", spec.format)
             // Rule R9: files are named after the title.
-            .addOption("-o", File(dir, "%(title).120B.%(ext)s").absolutePath)
+            .addOption("-o", File(dir, Prefs.NAME_TEMPLATES[Prefs.nameTemplate.value].second).absolutePath)
+        if (item.section.isNotEmpty()) request.addOption("--download-sections", item.section)
+        if (item.splitChapters) {
+            request.addOption("--split-chapters")
+            request.addCommands(listOf("-o", "chapter:" + File(dir, "chapters/%(section_number)02d - %(section_title).100B.%(ext)s").absolutePath))
+        }
         if (spec.sort.isNotEmpty()) request.addOption("-S", spec.sort)
         if (spec.isAudio) {
             request.addOption("-x").addOption("--audio-format", spec.audio)
