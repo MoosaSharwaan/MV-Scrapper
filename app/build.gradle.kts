@@ -12,8 +12,24 @@ android {
         applicationId = "com.mvscrapper.downloader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Release builds get these from the release workflow: the git tag (v1.2.3 -> 1.2.3)
+        // and the workflow run number, which only goes up, so Android and Obtainium accept updates.
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "0.1.0-dev"
+    }
+
+    // The same key must sign every release, or phones refuse to install the update.
+    // The key lives in GitHub secrets; see README, "Releases and Obtainium".
+    val keystoreFile = System.getenv("SIGNING_KEYSTORE")?.let { file(it) }
+    signingConfigs {
+        if (keystoreFile != null && keystoreFile.exists()) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     // One APK per CPU type keeps the download small; the universal APK works on any phone.
@@ -31,6 +47,7 @@ android {
             // Off for now: the library maps yt-dlp's JSON with Jackson, which needs
             // keep rules before code shrinking is safe.
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

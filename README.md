@@ -28,13 +28,13 @@ No account, no ads, no server. Downloads open in whatever player you already use
 - No DRM content (Netflix, Disney+, Prime Video and similar).
 - Videos that need a sign-in need cookie import, which comes in a later version.
 - 4K and 8K files are large, merging them is slow on a phone, and not every phone plays them smoothly.
-- Not on Google Play: its policy rejects YouTube downloaders. Install the APK directly.
+- Not on Google Play: its policy rejects YouTube downloaders. Install from GitHub Releases, ideally through Obtainium.
 
 Download only what you have the right to save.
 
 ## Build
 
-GitHub Actions builds the APKs on every push (`.github/workflows/build.yml`).
+GitHub Actions builds debug APKs on every push (`.github/workflows/build.yml`). Signed releases come from tags (see below).
 Download them from the run's **apks** artifact. Pick `app-arm64-v8a-debug.apk` for most phones,
 or `app-universal-debug.apk` if unsure.
 
@@ -45,6 +45,62 @@ Locally, with Android Studio or the Android SDK installed:
 ```
 
 Requirements: JDK 17, Android SDK 35. Minimum Android version: 8.0 (API 26).
+
+## Releases and Obtainium
+
+Releases are published on GitHub, so [Obtainium](https://github.com/ImranR98/Obtainium) can install the app
+and keep it updated.
+
+### Add the app in Obtainium
+
+1. Tap **Add app** and paste `https://github.com/MoosaSharwaan/MV-Scrapper`.
+2. Under **Filter APKs by regular expression**, enter `arm64-v8a` (most phones).
+   Use `universal` if you're unsure what your phone needs.
+3. If the repository is private, add a GitHub personal access token in Obtainium's GitHub settings.
+
+Obtainium then checks for new releases and offers the update.
+
+### One-time setup: the signing key
+
+Every release must be signed with the same key, or Android refuses the update. Create the key once on your
+own computer and keep a backup: if it is lost, everyone has to uninstall and reinstall.
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias mvdownloader -keyalg RSA -keysize 4096 -validity 10000
+```
+
+```bash
+base64 -w 0 release.jks > release.jks.b64
+```
+
+On macOS use `base64 -i release.jks -o release.jks.b64` for the second command.
+
+Then add four secrets in GitHub: repository **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+| --- | --- |
+| `SIGNING_KEYSTORE_BASE64` | the contents of `release.jks.b64` |
+| `SIGNING_STORE_PASSWORD` | the keystore password you chose |
+| `SIGNING_KEY_ALIAS` | `mvdownloader` |
+| `SIGNING_KEY_PASSWORD` | the key password (the same as the keystore password if you didn't set one) |
+
+Never commit `release.jks` to the repository.
+
+### Publish a release
+
+Tag a commit on the default branch and push the tag:
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+The **Release** workflow builds signed APKs (`mv-downloader-v0.1.0-arm64-v8a.apk`, `-armeabi-v7a`, `-x86_64`,
+`-universal`) and attaches them to a GitHub release. Each release's version code is the workflow run number,
+so it always goes up.
 
 ## Code map
 
