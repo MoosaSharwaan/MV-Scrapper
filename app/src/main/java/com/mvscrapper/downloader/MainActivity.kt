@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvscrapper.downloader.ui.AppTheme
+import com.mvscrapper.downloader.ui.BrowserScreen
 import com.mvscrapper.downloader.ui.HomeScreen
 import com.mvscrapper.downloader.ui.LibraryScreen
 import com.mvscrapper.downloader.ui.NoticeScreen
@@ -70,7 +71,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val TABS = listOf("⌂" to "Home", "⇩" to "Queue", "▤" to "Library", "⚙" to "Settings")
+private val TABS = listOf("⌂" to "Home", "◎" to "Browser", "⇩" to "Queue", "▤" to "Library", "⚙" to "Settings")
 
 @Composable
 private fun Root(sharedUrl: MutableState<String?>) {
@@ -101,9 +102,10 @@ private fun Root(sharedUrl: MutableState<String?>) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> HomeScreen(sharedUrl, onAdded = { tab = 1 })
-                1 -> QueueScreen()
-                2 -> LibraryScreen()
+                0 -> HomeScreen(sharedUrl, onAdded = { tab = 2 })
+                1 -> BrowserScreen(sharedUrl)
+                2 -> QueueScreen()
+                3 -> LibraryScreen()
                 else -> SettingsScreen()
             }
         }

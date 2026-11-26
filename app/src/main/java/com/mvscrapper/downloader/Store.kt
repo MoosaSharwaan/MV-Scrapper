@@ -37,6 +37,7 @@ object Store {
         put("torrentFiles", JSONArray(it.torrentFiles)); put("fileUris", JSONArray(it.fileUris))
         put("section", it.section); put("splitChapters", it.splitChapters)
         put("group", it.group); put("groupTitle", it.groupTitle)
+        put("referer", it.referer); put("cookies", it.cookies); put("userAgent", it.userAgent)
         put("spec", JSONObject().apply {
             put("label", it.spec.label); put("format", it.spec.format); put("sort", it.spec.sort)
             put("audio", it.spec.audio); put("container", it.spec.container); put("size", it.spec.sizeBytes)
@@ -68,6 +69,9 @@ object Store {
             splitChapters = o.optBoolean("splitChapters"),
             group = o.optString("group"),
             groupTitle = o.optString("groupTitle"),
+            referer = o.optString("referer"),
+            cookies = o.optString("cookies"),
+            userAgent = o.optString("userAgent"),
         )
     }
 }

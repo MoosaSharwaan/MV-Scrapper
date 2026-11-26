@@ -123,6 +123,9 @@ object Engine {
         Prefs.speedLimit.value.takeIf { it > 0 }?.let { request.addOption("-r", "${it}M") }
         // SponsorBlock only knows YouTube videos; yt-dlp skips it for other sites.
         if (Prefs.sponsorBlock.on) request.addOption("--sponsorblock-remove", "sponsor,selfpromo,interaction")
+        if (item.referer.isNotEmpty()) request.addOption("--referer", item.referer)
+        if (item.userAgent.isNotEmpty()) request.addOption("--user-agent", item.userAgent)
+        if (item.cookies.isNotEmpty()) request.addOption("--add-header", "Cookie:${item.cookies}")
         addCookies(request)
         YoutubeDL.getInstance().execute(
             request,
@@ -218,6 +221,9 @@ object Engine {
         return when {
             trimmed.contains("Unsupported URL", ignoreCase = true) ->
                 "No video found on this page. The site may not be supported, or the video is hidden behind a custom player."
+            trimmed.contains("403") || trimmed.contains("Forbidden", ignoreCase = true) ->
+                "The site refused the download (403 Forbidden). Update yt-dlp in Settings, import cookies if the site " +
+                    "needs a sign-in, turn off a VPN, or wait a while and retry. For other sites, try the Browser tab."
             trimmed.contains("DRM", ignoreCase = true) ->
                 "This video is DRM-protected and can't be downloaded."
             trimmed.contains("Sign in", ignoreCase = true) || trimmed.contains("login", ignoreCase = true) ->

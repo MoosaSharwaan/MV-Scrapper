@@ -57,6 +57,29 @@ object Downloads {
         pump()
     }
 
+    /**
+     * Queues a video or stream caught in the in-app browser. The page's address, cookies and
+     * browser identity go with it, because many sites refuse downloads without them.
+     */
+    fun enqueueFound(mediaUrl: String, title: String, audio: Boolean, pageUrl: String, cookies: String, userAgent: String) {
+        val spec = if (audio) Spec(label = "Audio · from browser", format = "ba/b", audio = "best")
+        else Spec(label = "Video · from browser", format = "bv*+ba/b", container = "mp4/mkv")
+        val item = Item(
+            id = UUID.randomUUID().toString(),
+            url = mediaUrl,
+            title = title,
+            thumbnail = null,
+            durationSec = 0,
+            spec = spec,
+            referer = pageUrl,
+            cookies = cookies,
+            userAgent = userAgent,
+        )
+        synchronized(lock) { _items.value = _items.value + item }
+        persist()
+        pump()
+    }
+
     /** Queues every chosen video of a playlist, saved together in a folder named after it. */
     fun enqueueAll(playlist: PlaylistMeta, entries: List<PlaylistEntry>, spec: Spec) {
         val folder = Storage.folderName(playlist.title)

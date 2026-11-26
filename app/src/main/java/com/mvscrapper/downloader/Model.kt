@@ -115,6 +115,10 @@ data class Item(
     /** Items queued together from one playlist share a group, shown as one card in the Queue. */
     val group: String = "",
     val groupTitle: String = "",
+    /** For videos caught in the in-app browser: what the page sent, so the site allows the download. */
+    val referer: String = "",
+    val cookies: String = "",
+    val userAgent: String = "",
 ) {
     val isActive: Boolean get() = state == State.Running || state == State.Processing
     val isTorrent: Boolean get() = url.startsWith("magnet:", ignoreCase = true)
